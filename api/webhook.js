@@ -6,7 +6,7 @@ export default async function handler(req, res) {
     }
 
     // Rate limiting
-    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    const ip = (req.headers['x-forwarded-for']?.split(',')[0].trim()) || req.socket.remoteAddress;
     const now = Date.now();
     const windowMs = 60 * 1000; // 1 minute
     const maxRequests = 2;
@@ -19,7 +19,15 @@ export default async function handler(req, res) {
     requests.push(now);
     rateLimit.set(ip, requests);
 
-    if (requests.length > maxRequests) {
+    // Prevent memory leak
+    for (const [key, times] of rateLimit.entries()) {
+        if (times.every(time => now - time >= windowMs)) {
+            rateLimit.delete(key);
+        }
+    }
+
+    if (requests.length >= maxRequests) {
+        res.setHeader('Retry-After', '60');
         return res.status(429).json({ error: "Too many requests, slow down." });
     }
 
@@ -29,11 +37,26 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: "Webhook URL not configured" });
     }
 
+    // Sanitize body - block @everyone/@here and blind forwarding
+    const { content, username, avatar_url } = req.body;
+    const sanitized = (content || "")
+        .replace(/@everyone/gi, "@\u200beveryone")
+        .replace(/@here/gi, "@\u200bhere")
+        .slice(0, 2000);
+
+    const payload = {
+        content: sanitized,
+        allowed_mentions: { parse: [] },
+    };
+
+    if (username) payload.username = String(username).slice(0, 80);
+    if (avatar_url) payload.avatar_url = String(avatar_url);
+
     try {
         const response = await fetch(DISCORD_WEBHOOK, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(req.body),
+            body: JSON.stringify(payload),
         });
 
         const text = await response.text();
