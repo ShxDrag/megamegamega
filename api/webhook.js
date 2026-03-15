@@ -5,6 +5,11 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: "Method not allowed" });
     }
 
+    const secret = req.headers['x-secret-key'];
+    if (secret !== process.env.SECRET_KEY) {
+        return res.status(403).json({ error: "Forbidden" });
+    }
+
     const ip = (req.headers['x-forwarded-for']?.split(',')[0].trim()) || req.socket.remoteAddress;
     const now = Date.now();
     const windowMs = 60 * 1000;
