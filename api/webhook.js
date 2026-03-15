@@ -5,10 +5,9 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: "Method not allowed" });
     }
 
-    // Rate limiting
     const ip = (req.headers['x-forwarded-for']?.split(',')[0].trim()) || req.socket.remoteAddress;
     const now = Date.now();
-    const windowMs = 60 * 1000; // 1 minute
+    const windowMs = 60 * 1000;
     const maxRequests = 2;
 
     if (!rateLimit.has(ip)) {
@@ -19,7 +18,6 @@ export default async function handler(req, res) {
     requests.push(now);
     rateLimit.set(ip, requests);
 
-    // Prevent memory leak
     for (const [key, times] of rateLimit.entries()) {
         if (times.every(time => now - time >= windowMs)) {
             rateLimit.delete(key);
@@ -37,26 +35,11 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: "Webhook URL not configured" });
     }
 
-    // Sanitize body - block @everyone/@here and blind forwarding
-    const { content, username, avatar_url } = req.body;
-    const sanitized = (content || "")
-        .replace(/@everyone/gi, "@\u200beveryone")
-        .replace(/@here/gi, "@\u200bhere")
-        .slice(0, 2000);
-
-    const payload = {
-        content: sanitized,
-        allowed_mentions: { parse: [] },
-    };
-
-    if (username) payload.username = String(username).slice(0, 80);
-    if (avatar_url) payload.avatar_url = String(avatar_url);
-
     try {
         const response = await fetch(DISCORD_WEBHOOK, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
+            body: JSON.stringify(req.body),
         });
 
         const text = await response.text();
