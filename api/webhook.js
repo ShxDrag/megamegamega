@@ -8,7 +8,7 @@ export default async function handler(req, res) {
     const ip = (req.headers['x-forwarded-for']?.split(',')[0].trim()) || req.socket.remoteAddress;
     const now = Date.now();
     const windowMs = 60 * 1000;
-    const maxRequests = 2;
+    const maxRequests = 4;
 
     if (!rateLimit.has(ip)) {
         rateLimit.set(ip, []);
